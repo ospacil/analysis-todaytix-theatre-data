@@ -1,10 +1,11 @@
+library(here)
 library(httr2)
 library(glue)
 library(tibble)
 library(purrr)
 library(tidyr)
 library(dplyr)
-library(here)
+library(nanoparquet)
 
 # -- Setup -----------------------
 
@@ -24,7 +25,7 @@ URL_AVAILABILITY <- glue("https://inventory-service.tixuk.io/api/v4/availability
 api_request <- request(URL_AVAILABILITY) |>
   req_headers(affiliateId = AFFILIATE_ID)
 
-# api_response <- req_perform(api_request)
+api_response <- req_perform(api_request)
 
 # -- Parse the response, and extract the main piece of information ---
 # Save the timestamp of the request as seen in the response
@@ -54,12 +55,22 @@ dat_product_availability <- tibble(
 )
 
 # Finally, re-format, and add the request timestamp
-pokus <- dat_product_availability |>
+dat_product_availability <- dat_product_availability |>
   mutate(
     performanceTime = as.POSIXct(performanceTime, tz="UTC", format="%Y-%m-%dT%H:%M:%S"),
     requestTime = request_timestamp,
     productId = request_product_id
   )
 
+# Save as parquet
+date_partition <- as.Date(request_timestamp)
 
+write_parquet(dat_product_availability,
+              glue(here("data/product_availability_{date_partition}.parquet")))
+
+# This is how one should be able to read all the files back into a tibble
+files_to_read <- list.files(here("data/"), pattern="*.parquet", full.names=TRUE)
+dat_read <- map(files_to_read, ~read_parquet(.)) |>
+  list_rbind()|> 
+  as_tibble()
 
