@@ -66,7 +66,7 @@ dat_product_availability <- dat_product_availability |>
 date_partition <- as.Date(request_timestamp)
 
 write_parquet(dat_product_availability,
-              glue(here("data/product_availability_{date_partition}.parquet")))
+              glue(here("data/product-id-{request_product_id}-availability-{date_partition}.parquet")))
 
 # This is how one should be able to read all the files back into a tibble
 files_to_read <- list.files(here("data/"), pattern="*.parquet", full.names=TRUE)
