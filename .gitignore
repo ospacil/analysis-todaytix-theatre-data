@@ -3,5 +3,7 @@
 .RData
 .Ruserdata
 
+venv
 data/*.parquet
+
 secrets.csv
