@@ -3,74 +3,112 @@ library(httr2)
 library(glue)
 library(tibble)
 library(purrr)
-library(tidyr)
 library(dplyr)
 library(nanoparquet)
 
-# -- Setup -----------------------
-
+## == SETUP / LOAD SECRETS =====================
 dat_secrets <- read.csv(here("secrets.csv"))
 AFFILIATE_ID <- dat_secrets[dat_secrets$secretName == "affiliateId"]$secretValue
 
-# -- Query the API----------------
-# Parameters
-PRODUCT_ID <- "42462" # A Christmas Carol(ish)
-DATE_START <- "20241101"
-DATE_END <- "20241231"
 
-# The query URL
-URL_AVAILABILITY <- glue("https://inventory-service.tixuk.io/api/v4/availability/products/{PRODUCT_ID}/quantity/1/from/{DATE_START}/to/{DATE_END}/detailed")
+## == DEFINE FUNCTIONS =========================
 
-# Build the API request, and perform
-api_request <- request(URL_AVAILABILITY) |>
-  req_headers(affiliateId = AFFILIATE_ID)
+#' Query the API for show availability information
+#' @param show_id The ID of the show
+#' @param date_start The start date of the availability query
+#' @param date_end The end date of the availability query
+#' @param affiliate_id The client AffiliateID assigned by TTG
+#' @return REST API response, or NULL if error
+query_api_for_show_availability <- function(show_id, date_start, date_end, affiliate_id=AFFILIATE_ID) {
+  # Form the query URL
+  URL_AVAILABILITY <- glue("https://inventory-service.tixuk.io/api/v4/availability/products/{show_id}/quantity/1/from/{date_start}/to/{date_end}/detailed")
 
-api_response <- req_perform(api_request)
+  # Build the API request, including headers
+  api_request <- request(URL_AVAILABILITY) |>
+    req_headers(affiliateId = AFFILIATE_ID)
 
-# -- Parse the response, and extract the main piece of information ---
-# Save the timestamp of the request as seen in the response
-request_timestamp <- as.POSIXct(api_response$headers$`X-Client-Request-DateTime`, tz="UTC", 
-                                format="%Y-%m-%dT%H:%M:%S")
+  # Perform the API request
+  tryCatch(res <- req_perform(api_request),
+    error = \(e) {print(glue("Failed to query the API for show ID {show_id}")); print(e); res <- NULL})
+}
 
-# Convert body of the response to JSON
-response_content_json <- resp_body_json(api_response)
 
-# First extract the requested product ID (of course this should match PRODUCT_ID)
-request_product_id <- response_content_json$response$show
+#' Parse the API response into a tibble. The function currently expects the body of the API response
+#' contains partiicular fields. It will break if that changes.
+#' @param api_response The REST API response
+#' @return A tibble
+parse_api_response <- function(api_response) {
 
-# And then extract the show availability information into a tibble
-# First, get the list of lists ...
-product_availability <- response_content_json$response$availability
+  if (!is.null(api_response)) {
+        
+    # Convert body of the response to JSON
+    response_content_json <- resp_body_json(api_response)
 
-# ... and then use purrr:map to convert into a tibble
-dat_product_availability <- tibble(
-  performanceTime = map_chr(product_availability, "datetime", .default=NA_character_),
-  performanceType = map_chr(product_availability, "performanceType", .default=NA_character_),
-  availableSeatCount = map_int(product_availability, "availableSeatCount", .default=NA_integer_),
-  largestLumpOfTickets = map_int(product_availability, "largestLumpOfTickets", .default=NA_integer_),
-  minPrice = map_int(product_availability, "minPrice", .default=NA_integer_),
-  maxPrice = map_int(product_availability, "maxPrice", .default=NA_integer_),
-  discountAvailable = map_lgl(product_availability, "discount", .default=NA),
-  currency = map_chr(product_availability, "currency", .default=NA_character_)
+    # Extract show availability information
+    response_show_availability <- response_content_json$response$availability
+
+    # ... and then use purrr:map to convert into a tibble
+    dat_show_availability <- tibble(
+      performanceTime = map_chr(response_show_availability, "datetime", .default=NA_character_),
+      performanceType = map_chr(response_show_availability, "performanceType", .default=NA_character_),
+      availableSeatCount = map_int(response_show_availability, "availableSeatCount", .default=NA_integer_),
+      largestLumpOfTickets = map_int(response_show_availability, "largestLumpOfTickets", .default=NA_integer_),
+      minPrice = map_int(response_show_availability, "minPrice", .default=NA_integer_),
+      maxPrice = map_int(response_show_availability, "maxPrice", .default=NA_integer_),
+      discountAvailable = map_lgl(response_show_availability, "discount", .default=NA),
+      currency = map_chr(response_show_availability, "currency", .default=NA_character_)
+    )
+
+    # Also extract the requested show ID as recorded in the response
+    response_show_id <- response_content_json$response$show
+    # Also extract the request timestamp (as recorded in the response)
+    response_timestamp <- as.POSIXct(resp_date(api_response))
+
+    # Finally, form the final tibble
+    dat_show_availability <- dat_show_availability |>
+      mutate(
+        performanceTime = as.POSIXct(performanceTime, tz="UTC", format="%Y-%m-%dT%H:%M:%S"),
+        requestTime = response_timestamp,
+        showId = response_show_id
+    ) 
+  } else {
+    res <- NULL
+  }
+}
+
+
+## == Query the API for a number of shows =============================
+# A list of shows
+show_list <- tribble(
+  ~show_name, ~show_id, ~date_start, ~date_end,
+  "A Christmas Carol(ish)", "42462", "20241101", "20241231",
+  "Test for error", "111", "20241101", "20241231",
+  "Oedipus (by Robert Icke)", "41707", "20241101", "20241231"
 )
 
-# Finally, re-format, and add the request timestamp
-dat_product_availability <- dat_product_availability |>
-  mutate(
-    performanceTime = as.POSIXct(performanceTime, tz="UTC", format="%Y-%m-%dT%H:%M:%S"),
-    requestTime = request_timestamp,
-    productId = request_product_id
-  )
+# Query the API
+api_response <- pmap(
+  list(show_list$show_id, show_list$date_start, show_list$date_end),
+  query_api_for_show_availability
+)
 
-# Save as parquet
-date_partition <- as.Date(request_timestamp)
-
-write_parquet(dat_product_availability,
-              glue(here("data/product-id-{request_product_id}-availability-{date_partition}.parquet")))
-
-# This is how one should be able to read all the files back into a tibble
-files_to_read <- list.files(here("data/"), pattern="*.parquet", full.names=TRUE)
-dat_read <- map(files_to_read, ~read_parquet(.)) |>
-  list_rbind()|> 
+# Parse the API response for all shows, and assemble into a single tibble
+dat_parsed <- map(api_response, parse_api_response) |>
+  list_rbind() |>
   as_tibble()
+
+# Save on disk as parquet
+
+query_execution_date <- max(dat_parsed$requestTime) |> as.Date()
+
+write_parquet(dat_parsed,
+  glue(here("data", "show-availability-query-date-{query_execution_date}.parquet")))
+
+
+# ===================================
+# # This is how one should be able to read all the files back into a tibble
+# files_to_read <- list.files(here("data/"), pattern="*.parquet", full.names=TRUE)
+# dat_read <- map(files_to_read, ~read_parquet(.)) |>
+#   list_rbind()|> 
+#   as_tibble()
 
