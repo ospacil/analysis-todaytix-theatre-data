@@ -82,7 +82,7 @@ parse_api_response <- function(api_response) {
 show_list <- tribble(
   ~show_name, ~show_id, ~date_start, ~date_end,
   "A Christmas Carol(ish)", "42462", "20241101", "20241231",
-  "Test for error", "111", "20241101", "20241231",
+  # "Test for error", "111", "20241101", "20241231",
   "Oedipus (by Robert Icke)", "41707", "20241101", "20241231"
 )
 
