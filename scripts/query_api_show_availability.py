@@ -1,6 +1,7 @@
 import polars as pl
 import requests
 from datetime import date
+from google.cloud import storage
 
 # Load secrets from CSV file
 secrets = pl.read_csv("secrets.csv")
@@ -65,15 +66,30 @@ def parse_api_response(api_response):
     else:
         return None
 
-# Query API for a number of shows
+def save_to_google_storage(dat, bucket):
+    # First save locally in parquet format
+    # TODO: Using a the gcsfs Python library, I should be able to save directly to Storage in parquet format
+    file_name = f"show-availability-query-date-{str(date.today())}.parquet"
+    path_to_file = f"data/{file_name}"
+    dat.write_parquet(path_to_file)
+
+    # Then upload to Google Cloud Storage from local
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket)
+    blob = bucket.blob(file_name)
+    blob.upload_from_filename(path_to_file)
+
+# ==============================================================================
+
+# We shall query the API for the followinf list of shows
 show_list = pl.DataFrame({
-    "show_name": ["A Christmas Carol(ish)", "Test for error", "Oedipus (by Robert Icke)"],
-    "show_id": [42462, 111, 41707],
-    "date_start": ["20241101", "20241101", "20241101"],
-    "date_end": ["20241231", "20241231", "20241231"]
+    "show_name": ["A Christmas Carol(ish)", "Oedipus (by Robert Icke)"],
+    "show_id": [42462, 41707],
+    "date_start": ["20241101", "20241101"],
+    "date_end": ["20241231", "20241231"]
 })
 
-# List of API responses
+# Get API responses for the list of shows
 api_responses = [query_api_for_show_availability(row["show_id"], row["date_start"], row["date_end"]) for row in show_list.iter_rows(named=True)]
 
 # Parse API responses into Polars DataFrames
@@ -82,7 +98,5 @@ parsed_responses = [parse_api_response(api_response) for api_response in api_res
 # Concatenate into a single DataFrame
 dat_parsed = pl.concat(parsed_responses, how="vertical")
 
-
-# Save DataFrame to Parquet file
-# TODO: Figure out how to save integer columns as integers, not floats
-dat_parsed.write_parquet(f"show-availability-query-date-{str(date.today())}.parquet")
+# Save the dataframe in parquet format locally, and also upload to google cloud storage
+save_to_google_storage(dat_parsed, "raw-todaytix-api-show-availability")
