@@ -106,9 +106,9 @@ write_parquet(dat_parsed,
 
 
 # ===================================
-# # This is how one should be able to read all the files back into a tibble
-files_to_read <- list.files(here("data/"), pattern="*.parquet", full.names=TRUE)
-dat_read <- map(files_to_read, ~read_parquet(.)) |>
-  list_rbind()|> 
-  as_tibble()
+# This is how one should be able to read all the files back into a tibble
+# files_to_read <- list.files(here("data/"), pattern="*.parquet", full.names=TRUE)
+# dat_read <- map(files_to_read, ~read_parquet(.)) |>
+#   list_rbind()|> 
+#   as_tibble()
 
