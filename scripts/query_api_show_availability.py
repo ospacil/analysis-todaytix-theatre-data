@@ -13,6 +13,7 @@ def query_api_for_show_availability(show_id, date_start, date_end, affiliate_id=
     headers = {"affiliateId": affiliate_id}
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
+        print(f"Successfully queried API for show ID {show_id}")
         return response
     else:
         print(f"Failed to query API for show ID {show_id}")
@@ -62,6 +63,7 @@ def parse_api_response(api_response):
             pl.col("showId").cast(pl.String)
         )
         
+        print(f"Successfully parsed API response for show ID {response_show_id}")
         return df
     else:
         return None
@@ -73,30 +75,36 @@ def save_to_google_storage(dat, bucket):
     path_to_file = f"data/{file_name}"
     dat.write_parquet(path_to_file)
 
-    # Then upload to Google Cloud Storage from local
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(bucket)
-    blob = bucket.blob(file_name)
-    blob.upload_from_filename(path_to_file)
+    try:
+        # Then upload to Google Cloud Storage from local
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket)
+        blob = bucket.blob(file_name)
+        blob.upload_from_filename(path_to_file)
+        print(f"Saved {file_name} to Google Cloud Storage")
+    except Exception as e:
+        print(f"Failed to save {file_name} to Google Cloud Storage")
+        print(e)
 
 # ==============================================================================
 
-# We shall query the API for the followinf list of shows
-show_list = pl.DataFrame({
-    "show_name": ["A Christmas Carol(ish)", "Oedipus (by Robert Icke)"],
-    "show_id": [42462, 41707],
-    "date_start": ["20241101", "20241101"],
-    "date_end": ["20241231", "20241231"]
-})
+if __name__ == "__main__":
+    # We shall query the API for the followinf list of shows
+    show_list = pl.DataFrame({
+        "show_name": ["A Christmas Carol(ish)", "Oedipus (by Robert Icke)"],
+        "show_id": [42462, 41707],
+        "date_start": ["20241101", "20241101"],
+        "date_end": ["20241231", "20241231"]
+    })
 
-# Get API responses for the list of shows
-api_responses = [query_api_for_show_availability(row["show_id"], row["date_start"], row["date_end"]) for row in show_list.iter_rows(named=True)]
+    # Get API responses for the list of shows
+    api_responses = [query_api_for_show_availability(row["show_id"], row["date_start"], row["date_end"]) for row in show_list.iter_rows(named=True)]
 
-# Parse API responses into Polars DataFrames
-parsed_responses = [parse_api_response(api_response) for api_response in api_responses if api_response is not None]
+    # Parse API responses into Polars DataFrames
+    parsed_responses = [parse_api_response(api_response) for api_response in api_responses if api_response is not None]
 
-# Concatenate into a single DataFrame
-dat_parsed = pl.concat(parsed_responses, how="vertical")
+    # Concatenate into a single DataFrame
+    dat_parsed = pl.concat(parsed_responses, how="vertical")
 
-# Save the dataframe in parquet format locally, and also upload to google cloud storage
-save_to_google_storage(dat_parsed, "raw-todaytix-api-show-availability")
+    # Save the dataframe in parquet format locally, and also upload to google cloud storage
+    save_to_google_storage(dat_parsed, "raw-todaytix-api-show-availability")
