@@ -1,6 +1,6 @@
 import polars as pl
 import requests
-from datetime import date
+from datetime import datetime, date
 from google.cloud import storage
 
 # Load secrets from CSV file
@@ -9,7 +9,16 @@ affiliate_id = secrets.filter(pl.col("secretName") == "affiliateId").get_column(
 
 # Define function to query API for show availability information
 def query_api_for_show_availability(show_id, date_start, date_end, affiliate_id=affiliate_id):
-    url = f"https://inventory-service.tixuk.io/api/v4/availability/products/{show_id}/quantity/1/from/{date_start}/to/{date_end}/detailed"
+
+    # If date_end is in the past, there is nothing to query.
+    if date_end < date.today().strftime("%Y%m%d"):
+        return None
+
+    # If date_start is in the past, the API call will fail. Replace with today's date in that case.
+    date_start_adjusted = max(date_start, date.today().strftime("%Y%m%d"))
+
+    # Now form the API request and perform the API call
+    url = f"https://inventory-service.tixuk.io/api/v4/availability/products/{show_id}/quantity/1/from/{date_start_adjusted}/to/{date_end}/detailed"
     headers = {"affiliateId": affiliate_id}
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
@@ -103,8 +112,12 @@ if __name__ == "__main__":
     # Parse API responses into Polars DataFrames
     parsed_responses = [parse_api_response(api_response) for api_response in api_responses if api_response is not None]
 
-    # Concatenate into a single DataFrame
-    dat_parsed = pl.concat(parsed_responses, how="vertical")
+    # If not empty, save the parsed results into a single dataframe
+    if parsed_responses == []:
+        print("No API response parsed. Nothing to save.")
+    else: 
+        # Concatenate into a single DataFrame
+        dat_parsed = pl.concat(parsed_responses, how="vertical")
 
-    # Save the dataframe in parquet format locally, and also upload to google cloud storage
-    save_to_google_storage(dat_parsed, "raw-todaytix-api-show-availability")
+        # Save the dataframe in parquet format locally, and also upload to google cloud storage
+        save_to_google_storage(dat_parsed, "raw-todaytix-api-show-availability")
