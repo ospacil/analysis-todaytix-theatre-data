@@ -3,12 +3,19 @@ import requests
 from datetime import datetime, date
 from google.cloud import storage
 
-# Load secrets from CSV file
-secrets = pl.read_csv("secrets.csv")
-affiliate_id = secrets.filter(pl.col("secretName") == "affiliateId").get_column("secretValue")[0]
-
 # Define function to query API for show availability information
-def query_api_for_show_availability(show_id, date_start, date_end, affiliate_id=affiliate_id):
+def query_api_for_show_availability(show_id, date_start, date_end, affiliate_id):
+    """
+    Query the TodayTix API for show (aka product) availability information.
+
+    Inputs:
+    - show_id: str - The unique ID of the show (aka product)
+    - date_start: str - The start of the date interval we want to query availability for. Needs to to be formatted as YYYYMMDD.
+    - date_end: str - The end of the date interval we want to query availability for. Needs to to be formatted as YYYYMMDD.
+    - affiliate_id: str - Your affiliate ID assigned by TodayTix
+    
+    Returns: requests.Response - The API response if successful, None otherwise
+    """
 
     # If date_end is in the past, there is nothing to query.
     if date_end < date.today().strftime("%Y%m%d"):
@@ -30,6 +37,15 @@ def query_api_for_show_availability(show_id, date_start, date_end, affiliate_id=
 
 # Define function to parse API response into Polars DataFrame
 def parse_api_response(api_response):
+    """
+    Parses the TodayTix API response into a Polars DataFrame,
+    by extracting the relevant information from the JSON body of the response.
+
+    Inputs:
+    - api_response: requests.Response - The raw TodayTix API response to parse. (Not only the JSON body!)
+
+    Returns: polars.DataFrame - The parsed information from the API response, or None if api_response is None
+    """
     if api_response is not None:
         api_response_json = api_response.json()
         response_show_availability = api_response_json["response"]["availability"]
@@ -79,13 +95,22 @@ def parse_api_response(api_response):
 
 def save_to_google_storage(dat, bucket):
     # First save locally in parquet format
-    # TODO: Using a the gcsfs Python library, I should be able to save directly to Storage in parquet format
+    """
+    Save a Polars DataFrame to Google Cloud Storage, with the current date included in the file name.
+
+    Inputs:
+    - dat: polars.DataFrame - The dataframe to be saved
+    - bucket: str - The Google Cloud Storage bucket to save to
+
+    Returns: None
+    """
+    
     file_name = f"show-availability-query-date-{str(date.today())}.parquet"
     path_to_file = f"data/{file_name}"
     dat.write_parquet(path_to_file)
 
+    # Then upload to Google Cloud Storage from local
     try:
-        # Then upload to Google Cloud Storage from local
         storage_client = storage.Client()
         bucket = storage_client.bucket(bucket)
         blob = bucket.blob(file_name)
@@ -98,7 +123,11 @@ def save_to_google_storage(dat, bucket):
 # ==============================================================================
 
 if __name__ == "__main__":
-    # We shall query the API for the followinf list of shows
+    # Load secrets from CSV file
+    secrets = pl.read_csv("secrets.csv")
+    affiliate_id = secrets.filter(pl.col("secretName") == "affiliateId").get_column("secretValue")[0]
+    
+    # We shall query the API for the following list of shows
     show_list = pl.DataFrame({
         "show_name": ["A Christmas Carol(ish)", "Oedipus (by Robert Icke)"],
         "show_id": [42462, 41707],
@@ -107,7 +136,7 @@ if __name__ == "__main__":
     })
 
     # Get API responses for the list of shows
-    api_responses = [query_api_for_show_availability(row["show_id"], row["date_start"], row["date_end"]) for row in show_list.iter_rows(named=True)]
+    api_responses = [query_api_for_show_availability(row["show_id"], row["date_start"], row["date_end"], affiliate_id) for row in show_list.iter_rows(named=True)]
 
     # Parse API responses into Polars DataFrames
     parsed_responses = [parse_api_response(api_response) for api_response in api_responses if api_response is not None]
@@ -118,6 +147,9 @@ if __name__ == "__main__":
     else: 
         # Concatenate into a single DataFrame
         dat_parsed = pl.concat(parsed_responses, how="vertical")
+        
+        print("Head of the resulting DataFrame:")
+        print(dat_parsed.glimpse())
 
         # Save the dataframe in parquet format locally, and also upload to google cloud storage
         save_to_google_storage(dat_parsed, "raw-todaytix-api-show-availability")
