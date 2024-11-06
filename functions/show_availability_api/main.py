@@ -29,10 +29,10 @@ def get_show_availability(request):
 
         # Configure connection to Cloud Storage
         fs = gcsfs.GCSFileSystem(project="todaytix-theatre-data")
-        file_name = f"gs://raw-todaytix-api-show-availability/show-availability-query-date-{str(date.today())}.csv"
+        file_name = f"gs://raw-todaytix-api-show-availability/show-availability-query-date-{str(date.today())}.parquet"
         
         # Write into Cloud Storage
         with fs.open(file_name, "wb") as f:
-            dat_parsed.write_csv(f)
+            dat_parsed.write_parquet(f)
 
         return 'Success!'
