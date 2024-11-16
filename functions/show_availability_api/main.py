@@ -8,10 +8,10 @@ from utils import *
 def get_show_availability(request):
     # Create a test DataFrame
     show_list = pl.DataFrame({
-        "show_name": ["A Christmas Carol(ish)", "Oedipus (by Robert Icke)"],
-        "show_id": [42462, 41707],
-        "date_start": ["20241101", "20241101"],
-        "date_end": ["20241231", "20241231"]
+        "show_name": ["A Christmas Carol(ish)", "Oedipus (by Robert Icke)", "Unicorn"],
+        "show_id": [42462, 41707, 43262],
+        "date_start": ["20241101", "20241101", "20250204"],
+        "date_end": ["20241231", "20241231", "20250426"]
     })
 
     # Get API responses for the list of shows
