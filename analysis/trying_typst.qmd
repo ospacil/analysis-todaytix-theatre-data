@@ -1,0 +1,72 @@
+---
+title: "Testing the typst format - Do tables and animations play nicely?"
+format: typst
+execute:
+  echo: false
+  warning: false
+---
+
+```{r}
+#| output: FALSE
+library(DBI)
+library(bigrquery)
+library(dplyr)
+library(lubridate)
+library(tidyr)
+library(ggplot2)
+library(gganimate)
+library(gt)
+
+# Set my preferences for the ggplot theme
+theme_set(theme_gray(base_size = 12)) + 
+    theme_update(
+        legend.position = "bottom",
+        strip.background = element_blank(),
+    )
+```
+
+```{r}
+# Configure the connection
+# It turns out that this just works, which is great!
+con <- dbConnect(
+    bigrquery::bigquery(),
+    project = "todaytix-theatre-data",
+    dataset = "prod"
+)
+
+# Make a connection to table in the database
+dat_remote <- tbl(con, "stg_show_availability")
+```
+
+```{r}
+# The dataset is pretty small still, so let's just download all rows and relevant columns to memory:
+dat <- dat_remote |>
+    select(show_id, show_name, starting_date, closing_date, request_date, days_till_performance,
+        performance_timestamp, performance_date, performance_type, available_seat_count, min_price) |>
+    collect()
+```
+
+
+### A table created using the gt package, with some colors
+
+```{r}
+dat |>
+    group_by(show_name, starting_date, closing_date) |>
+    summarise(num_of_performances = n_distinct(performance_timestamp),
+              num_of_records = n()) |>
+    ungroup() |>
+    gt() |>
+    tab_header(title = html("<b>Shows in the dataset</b>")) |>
+    tab_source_note(source_note = paste("Donwloaded on ", lubridate::today())) |>
+    cols_label(
+        show_name = "Show name",
+        starting_date = "Opening date",
+        closing_date = "Closing date",
+        num_of_performances = html("Number of<br> performances"),
+        num_of_records = html("Number of <br> records")
+    ) |>
+    fmt_date(columns=c(starting_date, closing_date), date_style="m_day_year") |>
+    opt_stylize(style=6, color="green")
+
+
+```
