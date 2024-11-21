@@ -1,0 +1,139 @@
+---
+title: "Testing Typst - Tables, graphs, animations?"
+format: typst
+execute:
+  echo: false
+  warning: false
+
+---
+
+```{r}
+#| output: FALSE
+library(DBI)
+library(bigrquery)
+library(dplyr)
+library(lubridate)
+library(tidyr)
+library(ggplot2)
+library(gt)
+library(plotly)
+
+# Set my preferences for the ggplot theme
+theme_set(theme_gray(base_size = 12)) + 
+    theme_update(
+        legend.position = "bottom",
+        strip.background = element_blank(),
+    )
+```
+
+```{r}
+# Configure the connection
+# It turns out that this just works, which is great!
+con <- dbConnect(
+    bigrquery::bigquery(),
+    project = "todaytix-theatre-data",
+    dataset = "prod"
+)
+
+# Make a connection to table in the database
+dat_remote <- tbl(con, "stg_show_availability")
+```
+
+```{r}
+# The dataset is pretty small still, so let's just download all rows and relevant columns to memory:
+dat <- dat_remote |>
+    select(show_id, show_name, starting_date, closing_date, request_date, days_till_performance,
+        performance_timestamp, performance_date, performance_type, available_seat_count, min_price) |>
+    collect()
+```
+
+
+The purpose of this document is to just test out rendering the `typst` format using Quarto. In particular I want to check that one can produce coloured tables, faceted graphs, and perhaps animations.
+
+At the same time, I am thinking about how best to display the evolution of available seats over time. In essence, each single peroformance (i.e. on a given date and time) would draw a path/curve in the plane `[days till performance, number of available seats]`, which is why I would like to try an animation visualization. Afterwards, I'll be thinking how to "fit" a curve that describes the data, i.e. an "optimal" estimate of all the paths drawn out by the performances.
+
+### A table created using the gt package, with some colors
+
+First, let's use the `gt` package to nicely display the list of shows in my dataset.
+
+```{r}
+dat |>
+    group_by(show_name, starting_date, closing_date) |>
+    summarise(num_of_performances = n_distinct(performance_timestamp),
+              num_of_records = n()) |>
+    ungroup() |>
+    gt() |>
+    tab_header(title = html("Shows in the dataset")) |>
+    tab_source_note(source_note = paste("Data downloaded on ", lubridate::today())) |>
+    cols_label(
+        show_name = "Show name",
+        starting_date = "Opening date",
+        closing_date = "Closing date",
+        num_of_performances = html("Number of<br> performances"),
+        num_of_records = html("Number of <br> records")
+    ) |>
+    fmt_date(columns=c(starting_date, closing_date), date_style="m_day_year") |>
+    opt_stylize(style=6, color="green")
+```
+
+### A Plotly animation
+Next, I want to look at a single show - Oedipus - and visualize the evolution of available seats as the performance data approaches. Let's try an animation using Plotly.
+
+**Actually, Plotly animations cannot be renedered into Typst.** I was simply confused by some unclear documentation and error messaging. The below code block won't get evaluated and is included just for reference.
+
+{{< pagebreak >}}
+
+```{r}
+#| echo: TRUE
+#| eval: FALSE
+dat |>
+    filter(show_name == "Oedipus") |>
+    # Sort by request date so that the frames are ordered correctly,
+    # and by DESCENDING performance date so that in the animation 
+    # the correct dot disappears when days till performance becomes 0 for the performance
+    arrange(request_date, desc(performance_date)) |>
+    mutate(frame_var = as.character(request_date)) |>
+    plot_ly(
+        x = ~days_till_performance,
+        y = ~available_seat_count,
+        color=~performance_type,
+        text=~paste0("Performance time: ", performance_timestamp),
+        frame = ~frame_var,
+        type = "scatter",
+        mode = "markers",
+        marker = list(size=10, opacity=0.7, line=list(width=1, color="gray")),
+        colors=c("deeppink", "navy")) |>
+    animation_slider(
+        currentvalue = list(prefix="As seen on ")
+    ) |>
+    layout(
+        title = "Oedipus - Number of available seats as the performance date approaches",
+        xaxis = list(title = "Number of days till performance"),
+        yaxis = list(title = "Number of available seats"),
+        legend = list(title=list(text="Evening or matinee performance"), x=0.1, y=0.9)
+    )
+```
+
+### A static visualisation
+
+Instead of the animation, let's display a series of plots, each one displaying the number of available tickets vs the number of days till the performance, based on information obtained (requested from the API) on the given date.
+
+I am not particularly happy with this visualization. But the point was try out the Typst format rendering anyway.
+
+```{r}
+#| fig.width: 8
+#| fig.height: 11
+
+dat |>
+    filter(show_name == "Oedipus",
+        performance_type %in% c("EVENING", "MATINEE")) |>
+    ggplot(aes(x=days_till_performance, y=available_seat_count, color=performance_type)) +
+    geom_point(alpha=0.7, size=1) +
+    facet_wrap(~paste0("As of ", request_date), ncol=5) +
+    scale_color_manual(values=c("deeppink", "navy")) +
+    labs(x="Number of days till performance",
+         y="Number of available seats",
+         color="Evening or matinee performance",
+         title="Oedipus - Number of available seats as the performance date approaches",
+         subtitle="Each subgraph shows information as obtained on the given date.\nA datapoint corresponds to a single performance date.")
+```

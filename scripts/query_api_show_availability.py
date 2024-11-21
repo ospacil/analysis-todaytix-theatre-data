@@ -39,10 +39,10 @@ if __name__ == "__main__":
     
     # We shall query the API for the following list of shows
     show_list = pl.DataFrame({
-        "show_name": ["A Christmas Carol(ish)", "Oedipus (by Robert Icke)"],
-        "show_id": [42462, 41707],
-        "date_start": ["20241101", "20241101"],
-        "date_end": ["20241231", "20241231"]
+        "show_name": ["A Christmas Carol(ish)", "Oedipus (by Robert Icke)", "Unicorn"],
+        "show_id": [42462, 41707, 43262],
+        "date_start": ["20241101", "20241101", "20250204"],
+        "date_end": ["20241231", "20241231", "20250426"]
     })
 
     # Get API responses for the list of shows
@@ -62,4 +62,4 @@ if __name__ == "__main__":
         print(dat_parsed.glimpse())
 
         # Save the dataframe in parquet format locally, and also upload to google cloud storage
-        save_to_google_storage(dat_parsed, "raw-todaytix-api-show-availability")
+        # save_to_google_storage(dat_parsed, "raw-todaytix-api-show-availability")
