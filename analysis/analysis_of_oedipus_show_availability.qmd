@@ -1,0 +1,94 @@
+---
+title: "Analysis of Oedipus show availability data"
+format:
+  html:
+    code-fold: show
+    code-tools: true
+jupyter: python3
+---
+
+```{python}
+import polars as pl
+import pyarrow
+from datetime import datetime, date
+from google.cloud import bigquery
+from great_tables import GT, html, md
+# import plotly.express as px
+# import plotly.io as pio
+# pio.renderers.default = "notebook"
+```
+
+```{python}
+#| warning: FALSE
+client = bigquery.Client()
+
+# Download all Oedipus show data
+my_query = (
+    'SELECT * '
+      'FROM todaytix-theatre-data.prod.stg_show_availability '
+     'WHERE show_name = "Oedipus" '
+     'ORDER BY request_date, performance_date'
+     )
+
+query_job = client.query(my_query)  # API request
+rows = query_job.result()  # Waits for query to finish
+
+# Convert into a Polars dataframe
+dat = pl.from_arrow(rows.to_arrow())
+```
+
+```{python}
+dat.head()
+```
+
+```{python}
+dat.group_by(
+    "show_name", "starting_date", "closing_date", "performance_type"
+    ).agg(
+        pl.col("performance_date").n_unique().alias("number_of_performances"),
+        pl.col("request_timestamp").n_unique().alias("number_of_datapoints_on_the_performance")
+    )
+```
+
+```{python}
+dat_performance_date_info_summary = dat.sort(
+        "performance_timestamp", "request_timestamp"
+    ).group_by(
+        "performance_date",
+        (pl.col("performance_date").dt.strftime("%a").alias("day_of_week")),
+        "performance_type"
+    ).agg(
+        pl.col("available_seat_count").first().alias("initial_num_of_available_seats"),
+        pl.col("available_seat_count").max().alias("max_num_of_available_seats"),
+        pl.col("request_date").n_unique().alias("num_of_info_points"),
+        pl.col("request_date").min().alias("first_info_on_availability"),
+        pl.col("request_date").max().alias("last_info_on_availability")
+    ).sort(
+        "performance_date", "performance_type", descending=[False, True]
+    )
+```
+
+```{python}
+GT(dat_performance_date_info_summary).fmt_date(
+    columns=["performance_date", "first_info_on_availability", "last_info_on_availability"], date_style="day_m_year"
+    ).data_color(
+        columns=["performance_type"],
+        palette=["lavender", "yellow"],
+        domain=["EVENING", "MATINEE"]
+    ).data_color(
+        columns=["initial_num_of_available_seats", "max_num_of_available_seats"],
+        palette="RdYlGn",
+        alpha=0.2,
+        domain=[0, 480]
+    ).tab_header(
+        title="Summary of information on individual show performances",
+        subtitle=html("<p align='left'>For each individual performance, we obtain a daily data point on show availability for each day from 18th October up until the day of the performance. Since our data collection started after the start of sale of tickets, the earlier performances will have fewer data points. We also show the number of tickets available at the start of data collection, and the maximum number of tickets seen available during the data collection period.</p>")
+    ).tab_spanner(
+        label=md("**Performance date and time**"),
+        columns=["performance_date", "day_of_week", "performance_type"]
+    ).tab_spanner(
+        label=md("**Summary of data points on the performance**"),
+        columns=["num_of_info_points", "first_info_on_availability", "last_info_on_availability", "initial_num_of_available_seats", "max_num_of_available_seats"]
+    )
+```
+
