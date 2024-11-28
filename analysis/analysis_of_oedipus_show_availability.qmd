@@ -1,13 +1,25 @@
 ---
-title: "Analysis of Oedipus show availability data"
+title: "Oedipus theatre show - Analysis of seat availability"
+author: Oldrich Spacil
+date: last-modified
+toc: true
 format:
   html:
-    code-fold: show
-    code-tools: true
+    code-fold: true
+    code-summary: "Source code"
+    code-tools: 
+      source: true
+      toggle: true
 jupyter: python3
 ---
 
+::: {.callout-tip}
+## Source code
+To view the full source code of the document, use the Code menu at the top right of this page.
+:::
+
 ```{python}
+#| echo: FALSE
 import polars as pl
 import pyarrow
 from datetime import datetime, date
@@ -19,6 +31,7 @@ from great_tables import GT, html, md
 ```
 
 ```{python}
+#| echo: FALSE
 #| warning: FALSE
 client = bigquery.Client()
 
@@ -37,20 +50,45 @@ rows = query_job.result()  # Waits for query to finish
 dat = pl.from_arrow(rows.to_arrow())
 ```
 
-```{python}
-dat.head()
-```
+## Introduction
+
+First, let's introduce the dataset. We are looking at daily information on seat availability for individual performances of the Oedipus theatre show. The show is shceduled for the following number of evening and matinee performances:
 
 ```{python}
-dat.group_by(
+# Get the very basic stats on the show...
+dat_show_summary = dat.group_by(
     "show_name", "starting_date", "closing_date", "performance_type"
     ).agg(
-        pl.col("performance_date").n_unique().alias("number_of_performances"),
-        pl.col("request_timestamp").n_unique().alias("number_of_datapoints_on_the_performance")
+        pl.col("performance_date").n_unique().alias("number_of_performances")
+    )
+
+# ... and display nicely
+GT(dat_show_summary).tab_header(
+        title="Show information summary"
+    ).cols_label(
+        show_name = "Show name",
+        starting_date = "Opening date",
+        closing_date = "Closing date",
+        performance_type = "Performance time",
+        number_of_performances = "Number of performances"
+    ).fmt_date(
+        columns=["starting_date", "closing_date"],
+        date_style="day_m_year"
+    ).data_color(
+        columns=["performance_type"],
+        palette=["lavender", "yellow"],
+        domain=["EVENING", "MATINEE"]
     )
 ```
 
+An individual performance is uniquely identified by its date and part of day (evening or matinee). For each performance, we have been collecting information on seat availability -- the information is collected daily since 18th October up intil the date of the performance. This means that for each individual performance we have a number of data points showing the change in seat availability over time.
+
+Before we embark on visualizing the data in earnest, let's list all the individual performances, calculate how many data points we have on each, and how many seats were available for the performance **at the start of our data collection** (rather than at opening of the ticket sales!).
+
 ```{python}
+# Calculate summary statistics fro each individual performance
+# In particular I am in interested in the number of days I have data points for each performance, 
+# and how this relates with the number of initially available seats
 dat_performance_date_info_summary = dat.sort(
         "performance_timestamp", "request_timestamp"
     ).group_by(
@@ -66,29 +104,41 @@ dat_performance_date_info_summary = dat.sort(
     ).sort(
         "performance_date", "performance_type", descending=[False, True]
     )
-```
 
-```{python}
-GT(dat_performance_date_info_summary).fmt_date(
-    columns=["performance_date", "first_info_on_availability", "last_info_on_availability"], date_style="day_m_year"
+# Display the summary stats in a nice table
+GT(dat_performance_date_info_summary).tab_header(
+        title="Summary of information on individual show performances",
+        subtitle="For each individual performance, we obtain a daily data point on show availability for each day from 18th October up until the day of the performance. Since our data collection started after the opening sale of tickets, the earlier performances will have fewer data points. We also show the number of seats available initially at the start of data collection, and the maximum number of seats available during the data collection period."
+    ).tab_spanner(
+        label=md("**Performance date and time**"),
+        columns=["performance_date", "day_of_week", "performance_type"]
+    ).tab_spanner(
+        label=md("**Summary of data points on the performance**"),
+        columns=["num_of_info_points", "initial_num_of_available_seats", "max_num_of_available_seats", "first_info_on_availability", "last_info_on_availability"]
+    ).fmt_date(
+        columns=["performance_date", "first_info_on_availability", "last_info_on_availability"], date_style="day_m_year"
     ).data_color(
         columns=["performance_type"],
         palette=["lavender", "yellow"],
         domain=["EVENING", "MATINEE"]
     ).data_color(
         columns=["initial_num_of_available_seats", "max_num_of_available_seats"],
-        palette="RdYlGn",
+        palette="Greens",
         alpha=0.2,
         domain=[0, 480]
-    ).tab_header(
-        title="Summary of information on individual show performances",
-        subtitle=html("<p align='left'>For each individual performance, we obtain a daily data point on show availability for each day from 18th October up until the day of the performance. Since our data collection started after the start of sale of tickets, the earlier performances will have fewer data points. We also show the number of tickets available at the start of data collection, and the maximum number of tickets seen available during the data collection period.</p>")
-    ).tab_spanner(
-        label=md("**Performance date and time**"),
-        columns=["performance_date", "day_of_week", "performance_type"]
-    ).tab_spanner(
-        label=md("**Summary of data points on the performance**"),
-        columns=["num_of_info_points", "first_info_on_availability", "last_info_on_availability", "initial_num_of_available_seats", "max_num_of_available_seats"]
+    ).cols_label(
+        performance_date = "Date",
+        day_of_week = "Day of week",
+        performance_type = "Time",
+        num_of_info_points = "Number of data points",
+        initial_num_of_available_seats = "Initial number of seats available",
+        max_num_of_available_seats = "Maximum number of seats available",
+        first_info_on_availability = "Date of first data point",
+        last_info_on_availability = "Date of last data point"
+    ).cols_align(
+        columns=["num_of_info_points", "initial_num_of_available_seats", "max_num_of_available_seats"],
+        align="center"
     )
 ```
 
+## Some actual analysis
