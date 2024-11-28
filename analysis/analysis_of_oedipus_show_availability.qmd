@@ -25,9 +25,9 @@ import pyarrow
 from datetime import datetime, date
 from google.cloud import bigquery
 from great_tables import GT, html, md
-# import plotly.express as px
-# import plotly.io as pio
-# pio.renderers.default = "notebook"
+import plotly.express as px
+import plotly.io as pio
+pio.renderers.default = "plotly_mimetype+notebook_connected"
 ```
 
 ```{python}
@@ -141,4 +141,41 @@ GT(dat_performance_date_info_summary).tab_header(
     )
 ```
 
+Even this crude table visualization uncovers a coupld of curious observations:
+
+1. **Matinee performances have lower initial seat availability than evening performances.** This might be because there are fewer matinee performances overall and the customers shopping for matinees might be different from the ones shopping for evening performances (e.g. due to commute time?), or perhaps because TodayTix do not get the full breadth of seats for matinee performances?
+2. **Some performances later in the show run do not have the "full" number of data points.** We shall have a look at detail, but it seem that we might be missing some of the daily data points for these performances.
+
+### Missing daily data points
+
+Actually, I am pretty sure the missing dates are the dates on which there are 0 seats available for the perofmance! This is quite important to know... 
+TODO: Verify the above, and fill in the missing dates.
+
 ## Some actual analysis
+
+Dynamic visualization of the evolution of available seats...
+
+```{python}
+fig = px.scatter(
+    dat,
+    x = "days_till_performance",
+    y = "available_seat_count",
+    color="performance_type",
+    animation_frame="request_date",
+    animation_group="performance_date",
+    range_x = [1, 80],
+    range_y=[0, 480],
+    opacity=0.7,
+    color_discrete_sequence =["mediumpurple", "yellow"]
+).update_traces(
+    marker=dict(size=10, line=dict(width=1, color="black"))
+).update_layout(
+    xaxis=dict(title="Number of days till performance"),
+    yaxis=dict(title="Number of seats available"),
+    legend=dict(title=dict(text="Performance time"),
+                xanchor="left", yanchor="top", x=0.01, y=0.99)
+)
+
+fig.show()
+
+```
