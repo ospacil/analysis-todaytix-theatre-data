@@ -25,6 +25,9 @@ import pyarrow
 from datetime import datetime, date
 from google.cloud import bigquery
 from great_tables import GT, html, md
+import matplotlib.pyplot as plt
+import seaborn as sns
+import seaborn.objects as so
 import plotly.express as px
 import plotly.io as pio
 pio.renderers.default = "plotly_mimetype+notebook_connected"
@@ -141,15 +144,54 @@ GT(dat_performance_date_info_summary).tab_header(
     )
 ```
 
-Even this crude table visualization uncovers a coupld of curious observations:
+Even this crude table visualization uncovers a couple of curious observations:
 
 1. **Matinee performances have lower initial seat availability than evening performances.** This might be because there are fewer matinee performances overall and the customers shopping for matinees might be different from the ones shopping for evening performances (e.g. due to commute time?), or perhaps because TodayTix do not get the full breadth of seats for matinee performances?
-2. **Some performances later in the show run do not have the "full" number of data points.** We shall have a look at detail, but it seem that we might be missing some of the daily data points for these performances.
+2. **Some performances later in the show run do not have the "full" number of data points.** We shall have a look in detail, but it seems that we might be missing some of the daily data points for these performances.
 
 ### Missing daily data points
 
-Actually, I am pretty sure the missing dates are the dates on which there are 0 seats available for the perofmance! This is quite important to know... 
-TODO: Verify the above, and fill in the missing dates.
+Actually, I am pretty sure the missing dates are the dates on which there are 0 seats available for the performance! Indeed, there are no data points with 0 seat availability:
+
+```{python}
+dat.group_by(
+        no_seats_available = (pl.col("available_seat_count") == 0)
+    ).agg(
+        pl.len().alias("number_of_data_points")
+    )
+```
+
+Looking at data points for a single performance, we can see that the missing dates are squeezed between dates when seat availability was close to 0:
+
+```{python}
+dat_single_performance = dat.filter(
+        pl.col("performance_date") == date(2024,11,29),
+        pl.col("performance_type") == "EVENING"
+    ).select(
+        pl.col("request_date").dt.strftime("%Y-%m-%d").alias("request_date"),
+        pl.col("available_seat_count")
+    ).sort("request_date")
+
+
+plt.figure()
+so.Plot(
+        dat_single_performance,
+        x="available_seat_count",
+        y="request_date",
+        text="available_seat_count"
+    ).add(
+        so.Bar()
+    ).add(
+        so.Text(halign="left", fontsize=8, offset=1)
+    ).label(
+        x="Number of available seats",
+        y="Date of the data point",
+        title="Evolution of the number of available seats\n for the evening performance of 29th Nov 2024"
+    ).layout(
+        size=(7,7)
+    )
+```
+
 
 ## Some actual analysis
 
