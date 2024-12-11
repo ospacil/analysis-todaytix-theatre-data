@@ -19,6 +19,5 @@ jobs:
         uses: quarto-dev/quarto-actions/publish@v2
         with:
           target: quarto-pub
-          path: analysis
-          render: false
+          path: analysis/analysis_of_oedipus_show_availability.qmd
           QUARTO_PUB_AUTH_TOKEN: ${{ secrets.QUARTO_PUB_AUTH_TOKEN }}
