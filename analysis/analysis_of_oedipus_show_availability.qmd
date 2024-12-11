@@ -1,5 +1,5 @@
 ---
-title: "Oedipus theatre show - Analysis of seat availability"
+title: "Oedipus theatre show - Analysis of seat availability (Work in progress)"
 author: Oldrich Spacil
 date: last-modified
 toc: true
