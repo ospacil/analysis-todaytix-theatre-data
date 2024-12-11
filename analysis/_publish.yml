@@ -1,0 +1,4 @@
+- source: analysis_of_oedipus_show_availability.qmd
+  quarto-pub:
+    - id: a2a45f8c-22d3-4a34-a6ae-459e0e2c2ed7
+      url: https://ospacil.quarto.pub/oedipus-show-availability-analysis
