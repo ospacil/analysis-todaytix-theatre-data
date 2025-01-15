@@ -220,7 +220,7 @@ Dynamic visualization of the evolution of available seats...
 
 ```{python}
 fig = px.scatter(
-    dat,
+    dat_filled,
     x = "days_till_performance",
     y = "available_seat_count",
     color="performance_type",
