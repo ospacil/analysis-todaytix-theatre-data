@@ -75,16 +75,16 @@ def parse_api_response(api_response):
         # Enforce correct data types
         # TODO: handle casting errors
         df = df_parsed.select(
-            pl.col("performanceTime").str.to_datetime("%+"),
-            pl.col("performanceType").cast(pl.String),
-            pl.col("availableSeatCount").cast(pl.Int64),
-            pl.col("largestLumpOfTickets").cast(pl.Int64),
-            pl.col("minPrice").cast(pl.Int64),
-            pl.col("maxPrice").cast(pl.Int64),
-            pl.col("currency").cast(pl.String),
-            pl.col("discountAvailable").cast(pl.Boolean),
-            pl.col("requestTime").str.to_datetime("%+"),
-            pl.col("showId").cast(pl.String)
+            pl.col("performanceTime").str.to_datetime("%+", strict=False),
+            pl.col("performanceType").cast(pl.String, strict=False),
+            pl.col("availableSeatCount").cast(pl.Int64, strict=False),
+            pl.col("largestLumpOfTickets").cast(pl.Int64, strict=False),
+            pl.col("minPrice").cast(pl.Int64, strict=False),
+            pl.col("maxPrice").cast(pl.Int64, strict=False),
+            pl.col("currency").cast(pl.String, strict=False),
+            pl.col("discountAvailable").cast(pl.Boolean, strict=False),
+            pl.col("requestTime").str.to_datetime("%+", strict=False),
+            pl.col("showId").cast(pl.String, strict=False)
         )
         
         print(f"Successfully parsed API response for show ID {response_show_id}")
