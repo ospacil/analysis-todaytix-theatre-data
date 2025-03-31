@@ -214,14 +214,6 @@ dat_filled = dat.sort(
     )
 ```
 
-```{python}
-# dat_filled.write_parquet("dat_oedipus.parquet")
-```
-
-```{ojs}
-1+2
-```
-
 ## Some actual analysis
 
 Dynamic visualization of the evolution of available seats...
